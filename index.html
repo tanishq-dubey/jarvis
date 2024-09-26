@@ -6,6 +6,9 @@
     <title>DWS Intelligence</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/moment@2.29.4/moment.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-moment@1.0.1/dist/chartjs-adapter-moment.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Mono:wght@400;700&display=swap" rel="stylesheet">
     <style>
         body {
@@ -172,14 +175,104 @@
             color: #888;
             margin-bottom: 5px;
         }
+        
+        #main-container {
+            display: flex;
+            height: 100vh;
+        }
+        
+        #chat-area {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        #sidebar {
+            width: 300px;
+            background-color: #222;
+            padding: 10px;
+            box-sizing: border-box;
+            overflow-y: auto;
+            transition: transform 0.3s ease-in-out;
+        }
+        
+        #sidebar.collapsed {
+            transform: translateX(100%);
+        }
+        
+        #sidebar-toggle {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            z-index: 1000;
+            background-color: #444;
+            color: #fff;
+            border: none;
+            padding: 5px 10px;
+            cursor: pointer;
+        }
+        
+        .graph-container {
+            margin-bottom: 20px;
+            height: 150px;
+        }
+        
+        .graph-title {
+            color: #888;
+            font-size: 14px;
+            margin-bottom: 5px;
+        }
+        
+        @media (max-width: 768px) {
+            #sidebar {
+                position: fixed;
+                right: 0;
+                top: 0;
+                bottom: 0;
+                width: 100%;
+                max-width: 300px;
+                transform: translateX(100%);
+            }
+            
+            #sidebar.collapsed {
+                transform: translateX(0);
+            }
+        }
     </style>
 </head>
 <body>
-    <div id="chat-container"></div>
-    <div id="input-container" class="pdp-panel">
-        <div class="pdp-label">INPUT:</div>
-        <textarea id="user-input" placeholder="Type your message here..." rows="3"></textarea>
-        <button id="send-button">EXECUTE</button>
+    <div id="main-container">
+        <div id="chat-area">
+            <div id="chat-container"></div>
+            <div id="input-container" class="pdp-panel">
+                <div class="pdp-label">INPUT:</div>
+                <textarea id="user-input" placeholder="Type your message here..." rows="3"></textarea>
+                <button id="send-button">EXECUTE</button>
+            </div>
+        </div>
+        <button id="sidebar-toggle">Toggle Charts</button>
+        <div id="sidebar" class="collapsed">
+            <div class="graph-container">
+                <div class="graph-title">CPU Load</div>
+                <canvas id="cpuChart"></canvas>
+            </div>
+            <div class="graph-container">
+                <div class="graph-title">Memory Usage</div>
+                <canvas id="memoryChart"></canvas>
+            </div>
+            <div class="graph-container">
+                <div class="graph-title">Disk I/O</div>
+                <canvas id="diskChart"></canvas>
+            </div>
+            <div class="graph-container">
+                <div class="graph-title">GPU Load</div>
+                <canvas id="gpuChart"></canvas>
+            </div>
+            <div class="graph-container">
+                <div class="graph-title">GPU Memory</div>
+                <canvas id="gpuMemoryChart"></canvas>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -304,6 +397,179 @@
                 sendMessage();
             }
         });
+
+        const chartOptions = {
+            type: 'line',
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: false,
+                elements: {
+                    line: {
+                        tension: 0
+                    },
+                    point: {
+                        radius: 0
+                    }
+                },
+                scales: {
+                    x: {
+                        type: 'time',
+                        time: {
+                            unit: 'second',
+                            displayFormats: {
+                                second: 'HH:mm:ss'
+                            }
+                        },
+                        ticks: {
+                            display: false
+                        }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        max: 100,
+                        ticks: {
+                            callback: function(value) {
+                                return value + '%';
+                            }
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        display: false
+                    }
+                }
+            }
+        };
+
+        const cpuChart = new Chart(document.getElementById('cpuChart').getContext('2d'), {
+            ...chartOptions,
+            data: {
+                datasets: [{
+                    label: 'CPU Load',
+                    data: [],
+                    borderColor: 'rgb(75, 192, 192)',
+                    fill: false
+                }]
+            }
+        });
+
+        const memoryChart = new Chart(document.getElementById('memoryChart').getContext('2d'), {
+            ...chartOptions,
+            data: {
+                datasets: [{
+                    label: 'Memory Usage',
+                    data: [],
+                    borderColor: 'rgb(255, 159, 64)',
+                    fill: false
+                }]
+            }
+        });
+
+        const diskChart = new Chart(document.getElementById('diskChart').getContext('2d'), {
+            ...chartOptions,
+            options: {
+                ...chartOptions.options,
+                scales: {
+                    ...chartOptions.options.scales,
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            callback: function(value) {
+                                return (value / 1024 / 1024).toFixed(2) + ' MB/s';
+                            }
+                        }
+                    }
+                }
+            },
+            data: {
+                datasets: [{
+                    label: 'Disk Read',
+                    data: [],
+                    borderColor: 'rgb(54, 162, 235)',
+                    fill: false
+                },
+                {
+                    label: 'Disk Write',
+                    data: [],
+                    borderColor: 'rgb(255, 99, 132)',
+                    fill: false
+                }]
+            }
+        });
+
+        const gpuChart = new Chart(document.getElementById('gpuChart').getContext('2d'), {
+            ...chartOptions,
+            data: {
+                datasets: [{
+                    label: 'GPU Load',
+                    data: [],
+                    borderColor: 'rgb(153, 102, 255)',
+                    fill: false
+                }]
+            }
+        });
+
+        const gpuMemoryChart = new Chart(document.getElementById('gpuMemoryChart').getContext('2d'), {
+            ...chartOptions,
+            data: {
+                datasets: [{
+                    label: 'GPU Memory',
+                    data: [],
+                    borderColor: 'rgb(255, 206, 86)',
+                    fill: false
+                }]
+            }
+        });
+
+        function updateCharts(data) {
+            if (sidebar.classList.contains('collapsed')) return;
+
+            const now = Date.now();
+            const thirtySecondsAgo = now - 30000;
+
+            function updateChart(chart, value) {
+                chart.data.datasets[0].data.push({x: now, y: value});
+                chart.data.datasets[0].data = chart.data.datasets[0].data.filter(point => point.x > thirtySecondsAgo);
+                chart.update('none');
+            }
+
+            updateChart(cpuChart, data.cpu_load);
+            updateChart(memoryChart, data.memory_usage);
+            updateChart(gpuChart, data.gpu_load);
+            updateChart(gpuMemoryChart, data.gpu_memory);
+
+            // Update disk chart (it has two datasets)
+            diskChart.data.datasets[0].data.push({x: now, y: data.disk_read_rate});
+            diskChart.data.datasets[1].data.push({x: now, y: data.disk_write_rate});
+            diskChart.data.datasets[0].data = diskChart.data.datasets[0].data.filter(point => point.x > thirtySecondsAgo);
+            diskChart.data.datasets[1].data = diskChart.data.datasets[1].data.filter(point => point.x > thirtySecondsAgo);
+            diskChart.update('none');
+        }
+
+        // Listen for system resource updates
+        socket.on('system_resources', (data) => {
+            updateCharts(data);
+        });
+
+        const sidebar = document.getElementById('sidebar');
+        const sidebarToggle = document.getElementById('sidebar-toggle');
+
+        sidebarToggle.addEventListener('click', () => {
+            sidebar.classList.toggle('collapsed');
+        });
+
+        function checkWindowSize() {
+            if (window.innerWidth <= 768) {
+                sidebar.classList.add('collapsed');
+            } else {
+                sidebar.classList.remove('collapsed');
+            }
+        }
+
+        window.addEventListener('resize', checkWindowSize);
+        checkWindowSize(); // Initial check
     </script>
 </body>
 </html>
