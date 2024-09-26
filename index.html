@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DWS Intelligence</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        #chat-container {
+            border: 1px solid #ccc;
+            height: 400px;
+            overflow-y: auto;
+            padding: 10px;
+            margin-bottom: 10px;
+        }
+        #user-input {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 10px;
+        }
+        #send-button {
+            width: 100%;
+            padding: 10px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        .message {
+            margin-bottom: 10px;
+        }
+        .user-message {
+            text-align: right;
+            color: blue;
+        }
+        .bot-message {
+            text-align: left;
+            color: green;
+        }
+        .thinking {
+            font-style: italic;
+            color: #888;
+        }
+        .thought-summary {
+            cursor: pointer;
+            color: #888;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        .thought-details {
+            display: none;
+            margin-left: 20px;
+            border-left: 2px solid #ccc;
+            padding-left: 10px;
+            margin-bottom: 10px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            background-color: #f0f0f0;
+        }
+        .collapsible::before {
+            content: '▶ ';
+            display: inline-block;
+            transition: transform 0.3s;
+        }
+        .collapsible.open::before {
+            transform: rotate(90deg);
+        }
+    </style>
+</head>
+<body>
+    <h1>DWS Intelligence</h1>
+    <div id="chat-container"></div>
+    <textarea id="user-input" placeholder="Type your message here..." rows="3"></textarea>
+    <button id="send-button">Send</button>
+
+    <script>
+        const socket = io();
+        const chatContainer = document.getElementById('chat-container');
+        const userInput = document.getElementById('user-input');
+        const sendButton = document.getElementById('send-button');
+
+        let thinkingElement = null;
+        let thinkingDetails = null;
+        let thinkingStartTime = null;
+
+        function addMessage(message, isUser) {
+            const messageElement = document.createElement('div');
+            messageElement.classList.add('message');
+            messageElement.classList.add(isUser ? 'user-message' : 'bot-message');
+            messageElement.innerHTML = isUser ? message : marked.parse(message);
+            chatContainer.appendChild(messageElement);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+
+        function startThinking() {
+            thinkingElement = document.createElement('div');
+            thinkingElement.classList.add('thought-summary', 'collapsible');
+            thinkingElement.textContent = 'Thinking...';
+            thinkingElement.onclick = toggleThinkingDetails;
+            
+            thinkingDetails = document.createElement('div');
+            thinkingDetails.classList.add('thought-details');
+            
+            chatContainer.appendChild(thinkingElement);
+            chatContainer.appendChild(thinkingDetails);
+            
+            thinkingStartTime = Date.now();
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+
+        function addThought(step, content) {
+            if (thinkingDetails) {
+                const thoughtElement = document.createElement('div');
+                thoughtElement.innerHTML = `<strong>${step}:</strong> ${content}`;
+                thinkingDetails.appendChild(thoughtElement);
+                chatContainer.scrollTop = chatContainer.scrollHeight;
+            }
+        }
+
+        function endThinking(thinkingTime) {
+            if (thinkingElement) {
+                thinkingElement.textContent = `Thinking... (${thinkingTime}s)`;
+                thinkingStartTime = null;
+            }
+        }
+
+        function toggleThinkingDetails() {
+            this.classList.toggle('open');
+            thinkingDetails.style.display = thinkingDetails.style.display === 'none' ? 'block' : 'none';
+        }
+
+        socket.on('thinking', (data) => {
+            if (!thinkingElement) startThinking();
+            addThought(data.step, 'Started');
+        });
+
+        socket.on('thought', (data) => {
+            addThought('Result', data.content);
+        });
+
+        socket.on('chat_response', (data) => {
+            endThinking(data.thinking_time);
+            addMessage(data.response, false);
+        });
+
+        socket.on('error', (data) => {
+            endThinking(data.thinking_time);
+            addMessage(`Error: ${data.message}`, false);
+        });
+
+        function sendMessage() {
+            const message = userInput.value.trim();
+            if (message) {
+                addMessage(message, true);
+                socket.emit('chat_request', { message: message });
+                userInput.value = '';
+            }
+        }
+
+        sendButton.addEventListener('click', sendMessage);
+        userInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+    </script>
+</body>
+</html>
