@@ -6,6 +6,10 @@ from typing import List
 from models import model_manager
 import structlog
 import time
+import psutil
+import GPUtil
+import threading
+import os
 
 
 
@@ -231,6 +235,53 @@ def generate_final_response(user_input: str, plan: List[str], step_results: List
     response = model_manager.generate_text("qwen2.5:7b", prompt, max_length=500)
     return response, response
 
+UPDATE_INTERVAL = 0.1  # 100ms, configurable
+
+def get_system_resources():
+    cpu_load = psutil.cpu_percent()
+    memory = psutil.virtual_memory()
+    memory_usage = memory.percent
+    disk_io = psutil.disk_io_counters()
+    disk_read = disk_io.read_bytes
+    disk_write = disk_io.write_bytes
+    
+    gpus = GPUtil.getGPUs()
+    gpu_load = gpus[0].load * 100 if gpus else 0
+    gpu_memory = gpus[0].memoryUtil * 100 if gpus else 0
+    
+    return {
+        'cpu_load': cpu_load,
+        'memory_usage': memory_usage,
+        'disk_read': disk_read,
+        'disk_write': disk_write,
+        'gpu_load': gpu_load,
+        'gpu_memory': gpu_memory
+    }
+
+def send_system_resources():
+    last_disk_read = 0
+    last_disk_write = 0
+    while True:
+        resources = get_system_resources()
+        
+        # Calculate disk I/O rates
+        disk_read_rate = (resources['disk_read'] - last_disk_read) / UPDATE_INTERVAL
+        disk_write_rate = (resources['disk_write'] - last_disk_write) / UPDATE_INTERVAL
+        
+        socketio.emit('system_resources', {
+            'cpu_load': resources['cpu_load'],
+            'memory_usage': resources['memory_usage'],
+            'disk_read_rate': disk_read_rate,
+            'disk_write_rate': disk_write_rate,
+            'gpu_load': resources['gpu_load'],
+            'gpu_memory': resources['gpu_memory']
+        })
+        
+        last_disk_read = resources['disk_read']
+        last_disk_write = resources['disk_write']
+        time.sleep(UPDATE_INTERVAL)
+
 if __name__ == "__main__":
     logger.info("Starting LLM Chat Server")
-    socketio.run(app, debug=True)
+    threading.Thread(target=send_system_resources, daemon=True).start()
+    socketio.run(app, debug=True, host="0.0.0.0", port=5000)
