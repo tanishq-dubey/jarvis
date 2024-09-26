@@ -117,9 +117,17 @@
 
         function addThought(step, content) {
             if (thinkingDetails) {
-                const thoughtElement = document.createElement('div');
-                thoughtElement.innerHTML = `<strong>${step}:</strong> ${content}`;
-                thinkingDetails.appendChild(thoughtElement);
+                const stepElement = document.createElement('div');
+                stepElement.classList.add('thought-summary', 'collapsible');
+                stepElement.textContent = step;
+                stepElement.onclick = toggleStepDetails;
+
+                const stepDetails = document.createElement('div');
+                stepDetails.classList.add('thought-details');
+                stepDetails.innerHTML = content;
+
+                thinkingDetails.appendChild(stepElement);
+                thinkingDetails.appendChild(stepDetails);
                 chatContainer.scrollTop = chatContainer.scrollHeight;
             }
         }
@@ -133,7 +141,18 @@
 
         function toggleThinkingDetails() {
             this.classList.toggle('open');
-            thinkingDetails.style.display = thinkingDetails.style.display === 'none' ? 'block' : 'none';
+            const details = this.nextElementSibling;
+            if (details) {
+                details.style.display = details.style.display === 'none' ? 'block' : 'none';
+            }
+        }
+
+        function toggleStepDetails() {
+            this.classList.toggle('open');
+            const details = this.nextElementSibling;
+            if (details) {
+                details.style.display = details.style.display === 'none' ? 'block' : 'none';
+            }
         }
 
         socket.on('thinking', (data) => {
