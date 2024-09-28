@@ -25,7 +25,7 @@ class ModelManager:
         logger.info("Selected best model", required_capability=required_capability, selected_model=selected_model)
         return selected_model
 
-    def generate_text(self, model_name, prompt, max_length=100, system="You are a helpful assistant."):
+    def generate_text(self, model_name, prompt, max_length=100, system="You are a helpful assistant.", stream=False):
         logger.debug("Generating text", model=model_name, prompt=prompt, max_length=max_length)
         # Check if model exists
         try:
@@ -38,7 +38,7 @@ class ModelManager:
             else:
                 logger.exception("Error pulling model", model=model_name, error=str(e))
                 raise e
-        response = ollama.generate(model=model_name, prompt=prompt, system=system)
+        response = ollama.generate(model=model_name, prompt=prompt, system=system, stream=stream)
         logger.debug("Text generated", model=model_name, response=response['response'])
         return response['response']
 
