@@ -6,9 +6,9 @@ logger = structlog.get_logger()
 class ModelManager:
     def __init__(self):
         self.model_capabilities = {
-            "qwen2.5:7b": ["general_knowledge", "structured_output", "multilingual", "instruction_following", "structured_data"],
+            "ajindal/llama3.1-storm:8b": ["general_knowledge", "reasoning", "tool_calling", "conversation", "multilingual", "instruction_following"],
             "llama3.1:8b": ["general_knowledge", "reasoning", "tool_calling", "conversation", "multilingual", "instruction_following"],
-            "qwen2.5-coder:7b": ["code_generation", "code_analysis", "instruction_following", "math_reasoning"],
+            "qwen2.5:7b": ["general_knowledge", "reasoning", "tool_calling", "conversation", "multilingual", "instruction_following"],
             "llama3.2:3b": ["summarization", "instruction_following", "tool_calling", "multilingual"],
             "llava:7b": ["visual_reasoning", "visual_conversation", "visual_tool_calling", "vision", "ocr", "multimodal"],
         }
@@ -25,8 +25,7 @@ class ModelManager:
         logger.info("Selected best model", required_capability=required_capability, selected_model=selected_model)
         return selected_model
 
-    def generate_text(self, model_name, prompt, max_length=100, system="You are a helpful assistant."):
-        logger.debug("Generating text", model=model_name, prompt=prompt, max_length=max_length)
+    def generate_text(self, model_name, prompt, max_length=100, system="You are a helpful assistant.", tools=[]):
         # Check if model exists
         try:
             ollama.pull(model_name)
@@ -38,7 +37,9 @@ class ModelManager:
             else:
                 logger.exception("Error pulling model", model=model_name, error=str(e))
                 raise e
-        response = ollama.generate(model=model_name, prompt=prompt, system=system)
+            
+
+        response = ollama.generate(model=model_name, prompt=prompt, system=system, tools=tools, max_tokens=max_length)
         logger.debug("Text generated", model=model_name, response=response['response'])
         return response['response']
 

@@ -9,6 +9,8 @@
     <script src="https://cdn.jsdelivr.net/npm/moment@2.29.4/moment.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-moment@1.0.1/dist/chartjs-adapter-moment.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/default.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Mono:wght@400;700&display=swap" rel="stylesheet">
     <style>
         body {
@@ -86,13 +88,17 @@
             color: #888;
         }
         .thought-summary {
-            cursor: pointer;
-            color: #fff;
-            margin-bottom: 5px;
             font-weight: bold;
-            display: flex;
-            align-items: center;
+            margin-bottom: 5px;
+            padding: 5px;
+            border-radius: 3px;
         }
+        .thought-summary.plan { background-color: #2c3e50; }
+        .thought-summary.decision { background-color: #34495e; }
+        .thought-summary.tool_call { background-color: #16a085; }
+        .thought-summary.tool_result { background-color: #27ae60; }
+        .thought-summary.think_more { background-color: #2980b9; }
+        .thought-summary.answer { background-color: #8e44ad; }
         .thought-details {
             display: none;
             margin-left: 20px;
@@ -238,11 +244,111 @@
                 transform: translateX(0);
             }
         }
+
+        .conversation-history-container {
+            margin-top: 20px;
+            background-color: #222;
+            border-radius: 5px;
+            padding: 10px;
+        }
+
+        #conversation-history {
+            color: #fff;
+            font-family: 'Noto Sans Mono', monospace;
+            font-size: 12px;
+        }
+        .history-card {
+            background-color: #2c3e50;
+            border-radius: 5px;
+            padding: 10px;
+            margin-bottom: 10px;
+        }
+        .history-role {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        .history-content {
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        .error-message {
+            background-color: #ff6b6b;
+            color: #fff;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 10px;
+        }
+
+        .retrying {
+            background-color: #feca57;
+            color: #333;
+        }
+
+        #clear-history-button {
+            background-color: #e74c3c;
+            color: white;
+            border: none;
+            padding: 10px;
+            margin-bottom: 10px;
+            cursor: pointer;
+            font-family: 'Noto Sans Mono', monospace;
+            font-size: 14px;
+            border-radius: 5px;
+        }
+
+        #clear-history-button:hover {
+            background-color: #c0392b;
+        }
+
+        #chat-tabs {
+            display: flex;
+            background-color: #222;
+            padding: 10px 10px 0 10px;
+        }
+        
+        .chat-tab {
+            background-color: #444;
+            color: #fff;
+            border: none;
+            padding: 10px 20px;
+            margin-right: 5px;
+            cursor: pointer;
+            border-top-left-radius: 5px;
+            border-top-right-radius: 5px;
+        }
+        
+        .chat-tab.active {
+            background-color: #666;
+        }
+        
+        #new-chat-button {
+            background-color: #27ae60;
+            color: #fff;
+            border: none;
+            padding: 10px 20px;
+            cursor: pointer;
+            border-top-left-radius: 5px;
+            border-top-right-radius: 5px;
+        }
+        
+        .close-tab {
+            margin-left: 10px;
+            color: #ff6b6b;
+            cursor: pointer;
+        }
+        
+        .thinking-section {
+            margin-bottom: 20px;
+            border-left: 2px solid #444;
+            padding-left: 10px;
+        }
     </style>
 </head>
 <body>
     <div id="main-container">
         <div id="chat-area">
+            <div id="chat-tabs"></div>
             <div id="chat-container"></div>
             <div id="input-container" class="pdp-panel">
                 <div class="pdp-label">INPUT:</div>
@@ -272,6 +378,12 @@
                 <div class="graph-title">GPU Memory</div>
                 <canvas id="gpuMemoryChart"></canvas>
             </div>
+            
+            <!-- Add this new section for conversation history -->
+            <div class="conversation-history-container">
+                <div class="graph-title">Conversation History</div>
+                <div id="conversation-history"></div>
+            </div>
         </div>
     </div>
 
@@ -280,10 +392,80 @@
         const chatContainer = document.getElementById('chat-container');
         const userInput = document.getElementById('user-input');
         const sendButton = document.getElementById('send-button');
+        const chatTabs = document.getElementById('chat-tabs');
 
-        let thinkingElement = null;
-        let thinkingDetails = null;
-        let thinkingStartTime = null;
+        let currentChatId = null;
+        let chats = {};
+
+        function createNewChat() {
+            const chatId = Date.now().toString();
+            chats[chatId] = {
+                messages: [],
+                thinkingSections: []
+            };
+            addChatTab(chatId);
+            switchToChat(chatId);
+            saveChats();
+        }
+
+        function addChatTab(chatId) {
+            const tab = document.createElement('button');
+            tab.classList.add('chat-tab');
+            tab.textContent = `Chat ${Object.keys(chats).length}`;
+            tab.onclick = () => switchToChat(chatId);
+
+            const closeButton = document.createElement('span');
+            closeButton.classList.add('close-tab');
+            closeButton.textContent = '×';
+            closeButton.onclick = (e) => {
+                e.stopPropagation();
+                closeChat(chatId);
+            };
+
+            tab.appendChild(closeButton);
+            chatTabs.insertBefore(tab, chatTabs.lastElementChild);
+        }
+
+        function switchToChat(chatId) {
+            currentChatId = chatId;
+            document.querySelectorAll('.chat-tab').forEach(tab => tab.classList.remove('active'));
+            document.querySelector(`.chat-tab:nth-child(${Object.keys(chats).indexOf(chatId) + 1})`).classList.add('active');
+            renderChat(chatId);
+        }
+
+        function closeChat(chatId) {
+            delete chats[chatId];
+            saveChats();
+            const tabToRemove = Array.from(chatTabs.children).find(tab => tab.textContent.includes(`Chat ${Object.keys(chats).indexOf(chatId) + 1}`));
+            if (tabToRemove) {
+                chatTabs.removeChild(tabToRemove);
+            }
+            if (currentChatId === chatId) {
+                const remainingChatIds = Object.keys(chats);
+                if (remainingChatIds.length > 0) {
+                    switchToChat(remainingChatIds[0]);
+                } else {
+                    createNewChat();
+                }
+            }
+        }
+
+        function renderChat(chatId) {
+            chatContainer.innerHTML = '';
+            const chat = chats[chatId];
+            chat.messages.forEach(message => addMessage(message.content, message.isUser));
+            chat.thinkingSections.forEach(section => {
+                const thinkingSection = createThinkingSection();
+                section.thoughts.forEach(thought => addThought(thought.type, thought.content, thought.details, thinkingSection));
+            });
+        }
+
+        function createThinkingSection() {
+            const section = document.createElement('div');
+            section.classList.add('thinking-section');
+            chatContainer.appendChild(section);
+            return section;
+        }
 
         function addMessage(message, isUser) {
             const messageElement = document.createElement('div');
@@ -292,65 +474,40 @@
             messageElement.innerHTML = isUser ? message : marked.parse(message);
             chatContainer.appendChild(messageElement);
             chatContainer.scrollTop = chatContainer.scrollHeight;
+
+            if (currentChatId) {
+                chats[currentChatId].messages.push({ content: message, isUser: isUser });
+                saveChats();
+            }
         }
 
-        function startThinking() {
-            thinkingElement = document.createElement('div');
-            thinkingElement.classList.add('thought-summary', 'collapsible');
+        function addThought(type, content, details = '', thinkingSection) {
+            const stepElement = document.createElement('div');
+            stepElement.classList.add('thought-summary', 'collapsible', type);
+            stepElement.textContent = type.charAt(0).toUpperCase() + type.slice(1).replace('_', ' ') + ':';
+            stepElement.onclick = toggleStepDetails;
+
+            const stepDetails = document.createElement('div');
+            stepDetails.classList.add('thought-details');
             
-            const led = document.createElement('div');
-            led.classList.add('led', 'blinking');
-            
-            const textNode = document.createTextNode('Thinking...');
-            
-            thinkingElement.appendChild(led);
-            thinkingElement.appendChild(textNode);
-            thinkingElement.onclick = toggleThinkingDetails;
-            
-            thinkingDetails = document.createElement('div');
-            thinkingDetails.classList.add('thought-details');
-            
-            chatContainer.appendChild(thinkingElement);
-            chatContainer.appendChild(thinkingDetails);
-            
-            thinkingStartTime = Date.now();
+            if (type === 'error') {
+                stepElement.classList.add('error-message');
+                if (content.includes('retrying')) {
+                    stepElement.classList.add('retrying');
+                }
+                stepDetails.innerHTML = marked.parse(content + '\n\nDetails:\n```\n' + details + '\n```');
+            } else {
+                stepDetails.innerHTML = marked.parse(content);
+            }
+
+            thinkingSection.appendChild(stepElement);
+            thinkingSection.appendChild(stepDetails);
             chatContainer.scrollTop = chatContainer.scrollHeight;
-        }
 
-        function addThought(step, content) {
-            if (thinkingDetails) {
-                const stepElement = document.createElement('div');
-                stepElement.classList.add('thought-summary', 'collapsible');
-                stepElement.textContent = step;
-                stepElement.onclick = toggleStepDetails;
-
-                const stepDetails = document.createElement('div');
-                stepDetails.classList.add('thought-details');
-                stepDetails.innerHTML = content;
-
-                thinkingDetails.appendChild(stepElement);
-                thinkingDetails.appendChild(stepDetails);
-                chatContainer.scrollTop = chatContainer.scrollHeight;
-            }
-        }
-
-        function endThinking(thinkingTime) {
-            if (thinkingElement) {
-                const textNode = thinkingElement.childNodes[1];
-                textNode.nodeValue = `Thinking... (${thinkingTime}s)`;
-                const led = thinkingElement.querySelector('.led');
-                led.classList.remove('blinking');
-                led.style.backgroundColor = '#0f0';
-                led.style.boxShadow = '0 0 10px #0f0';
-                thinkingStartTime = null;
-            }
-        }
-
-        function toggleThinkingDetails() {
-            this.classList.toggle('open');
-            const details = this.nextElementSibling;
-            if (details) {
-                details.style.display = details.style.display === 'none' ? 'block' : 'none';
+            if (currentChatId) {
+                const currentThinkingSection = chats[currentChatId].thinkingSections[chats[currentChatId].thinkingSections.length - 1];
+                currentThinkingSection.thoughts.push({ type, content, details });
+                saveChats();
             }
         }
 
@@ -362,33 +519,70 @@
             }
         }
 
-        socket.on('thinking', (data) => {
-            if (!thinkingElement) startThinking();
-            addThought(data.step, 'Started');
-        });
+        function saveChats() {
+            localStorage.setItem('chats', JSON.stringify(chats));
+        }
 
-        socket.on('thought', (data) => {
-            addThought('Result', data.content);
-        });
-
-        socket.on('chat_response', (data) => {
-            endThinking(data.thinking_time);
-            addMessage(data.response, false);
-        });
-
-        socket.on('error', (data) => {
-            endThinking(data.thinking_time);
-            addMessage(`Error: ${data.message}`, false);
-        });
+        function loadChats() {
+            const storedChats = localStorage.getItem('chats');
+            if (storedChats) {
+                chats = JSON.parse(storedChats);
+                Object.keys(chats).forEach(chatId => addChatTab(chatId));
+                if (Object.keys(chats).length > 0) {
+                    switchToChat(Object.keys(chats)[0]);
+                } else {
+                    createNewChat();
+                }
+            } else {
+                createNewChat();
+            }
+        }
 
         function sendMessage() {
             const message = userInput.value.trim();
-            if (message) {
+            if (message && currentChatId) {
                 addMessage(message, true);
-                socket.emit('chat_request', { message: message });
+                chats[currentChatId].thinkingSections.push({ thoughts: [] });
+                socket.emit('chat_request', { 
+                    message: message,
+                    conversation_history: chats[currentChatId].messages.filter(m => !m.isUser).map(m => ({ role: 'assistant', content: m.content }))
+                        .concat(chats[currentChatId].messages.filter(m => m.isUser).map(m => ({ role: 'user', content: m.content })))
+                });
                 userInput.value = '';
             }
         }
+
+        socket.on('thinking', (data) => {
+            if (currentChatId) {
+                const newThinkingSection = createThinkingSection();
+                chats[currentChatId].thinkingSections.push({ thoughts: [] });
+                addThought(data.step, 'Started', '', newThinkingSection);
+            }
+        });
+
+        socket.on('thought', (data) => {
+            if (currentChatId) {
+                const currentThinkingSection = chatContainer.querySelector('.thinking-section:last-child');
+                addThought(data.type, data.content, data.details, currentThinkingSection);
+            }
+        });
+
+        socket.on('chat_response', (data) => {
+            if (currentChatId) {
+                addMessage(data.response, false);
+            }
+        });
+
+        socket.on('error', (data) => {
+            if (currentChatId) {
+                const currentThinkingSection = chatContainer.querySelector('.thinking-section:last-child');
+                if (data.type === 'retrying') {
+                    addThought('error', data.content, '', currentThinkingSection);
+                } else {
+                    addThought('error', data.message, '', currentThinkingSection);
+                }
+            }
+        });
 
         sendButton.addEventListener('click', sendMessage);
         userInput.addEventListener('keypress', function(e) {
@@ -397,6 +591,16 @@
                 sendMessage();
             }
         });
+
+        // Add new chat button
+        const newChatButton = document.createElement('button');
+        newChatButton.id = 'new-chat-button';
+        newChatButton.textContent = '+ New Chat';
+        newChatButton.onclick = createNewChat;
+        chatTabs.appendChild(newChatButton);
+
+        // Load chats when the page loads
+        loadChats();
 
         const chartOptions = {
             type: 'line',
@@ -570,6 +774,41 @@
 
         window.addEventListener('resize', checkWindowSize);
         checkWindowSize(); // Initial check
+
+        // Add this new function to update the conversation history
+        function updateConversationHistory(history) {
+            const conversationHistoryElement = document.getElementById('conversation-history');
+            conversationHistoryElement.innerHTML = '';
+            
+            history.forEach(item => {
+                const card = document.createElement('div');
+                card.classList.add('history-card');
+                
+                const role = document.createElement('div');
+                role.classList.add('history-role');
+                role.textContent = item.role.charAt(0).toUpperCase() + item.role.slice(1);
+                
+                const content = document.createElement('pre');
+                content.classList.add('history-content');
+                content.innerHTML = hljs.highlightAuto(item.content).value;
+                
+                card.appendChild(role);
+                card.appendChild(content);
+                conversationHistoryElement.appendChild(card);
+            });
+        }
+
+        // Add this new socket listener
+        socket.on('conversation_history', (data) => {
+            updateConversationHistory(data.history);
+        });
+
+        // Add event listener for the clear history button
+        clearHistoryButton.addEventListener('click', () => {
+            if (confirm('Are you sure you want to clear the conversation history?')) {
+                clearConversationHistory();
+            }
+        });
     </script>
 </body>
 </html>
