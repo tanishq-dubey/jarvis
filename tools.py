@@ -2,10 +2,10 @@ import duckduckgo_search
 import requests
 from readability.readability import Document
 from markdownify import markdownify as md
-import sys
-import time
-import io
 import subprocess
+import time
+import tempfile
+
 class Tool:
     def __init__(self, name: str, description: str, arguments: dict, returns: str):
         self.name = name
@@ -80,33 +80,37 @@ class CalculatorTool(Tool):
         super().__init__("calculator", "Perform a calculation", {'type': 'object', 'properties': {'expression': {'type': 'string', 'description': 'The mathematical expression to evaluate, should be a python mathematical expression'}}}, "result:string")
 
     def execute(self, arg: dict) -> str:
-        try:
-            return str(exec(arg["expression"]))
-        except Exception as e:
-            return f"Error executing code: {str(e)}"
-
+        p = PythonCodeTool()
+        return p.execute({'code': arg['expression']})
 
 class PythonCodeTool(Tool):
     def __init__(self):
-        super().__init__("python_code", "Execute python code", {'type': 'object', 'properties': {'code': {'type': 'string', 'description': 'The python code to execute, should be a single line of valid python'}}}, "result:string")
+        super().__init__("python_code", "Execute python code", 
+                         {'type': 'object', 'properties': {'code': {'type': 'string', 'description': 'The python code to execute, can be multiline'}}}, 
+                         "result:string")
 
     def execute(self, arg: dict) -> str:
         try:
-            start_time = time.time()
-            process = subprocess.Popen(['python', '-c', arg['code']], 
-                                       stdout=subprocess.PIPE, 
-                                       stderr=subprocess.PIPE, 
-                                       text=True)
-            stdout, stderr = process.communicate(timeout=10)  # 10 second timeout
-            end_time = time.time()
-            execution_time = end_time - start_time
-            
-            result = {
-                'stdout': stdout,
-                'stderr': stderr,
-                'return_value': process.returncode,
-                'execution_time': execution_time
-            }
+            with tempfile.NamedTemporaryFile(suffix=".py", mode="w", delete=False) as temp_file:
+                temp_file.write(arg['code'])
+                temp_file.flush()
+
+                start_time = time.time()
+                process = subprocess.Popen(['python', temp_file.name], 
+                                           stdout=subprocess.PIPE, 
+                                           stderr=subprocess.PIPE, 
+                                           text=True)
+                stdout, stderr = process.communicate(timeout=10)  # 10 second timeout
+                end_time = time.time()
+                execution_time = end_time - start_time
+
+                result = {
+                    'stdout': stdout,
+                    'stderr': stderr,
+                    'return_value': process.returncode,
+                    'execution_time': execution_time
+                }
+
         except subprocess.TimeoutExpired:
             process.kill()
             return "Error: Code execution timed out after 10 seconds"

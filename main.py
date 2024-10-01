@@ -26,7 +26,7 @@ tool_manager = DefaultToolManager()
 
 @app.route('/')
 def index():
-    logger.info("Serving index.html")
+    logger.info("Serving index.html")   
     return send_from_directory('.', 'index.html')
 
 class ChatRequest(BaseModel):
@@ -99,7 +99,7 @@ def answer_question_tools(user_input: str, conversation_history: List[dict], max
                 emit('conversation_history', {'history': conversation_history})
                 emit('thought', {'type': 'tool_result', 'content': tool_response})
 
-            reflection_prompt = "Reflect on the tool results. If there were any errors, propose multiple alternative approaches to solve the problem. If successful, consider if the result fully answers the user's query or if additional steps are needed."
+            reflection_prompt = "Reflect on the tool results. If there were any errors, propose multiple alternative approaches to solve the problem. If successful, consider if the result fully answers the user's query or if additional steps are needed. If input is needed, ask the user for clarification with <answer></answer>."
             conversation_history.append({
                 "role": "assistant",
                 "content": reflection_prompt
@@ -112,9 +112,20 @@ def answer_question_tools(user_input: str, conversation_history: List[dict], max
                     final_answer = answer_content.group(1).strip()
                     emit('thought', {'type': 'answer', 'content': final_answer})
                     return final_answer
+            elif "<clarification>" in assistant_message['content'].lower():
+                clarification_content = re.search(r'<clarification>(.*?)</clarification>', assistant_message['content'], re.DOTALL)
+                if clarification_content:
+                    clarification_answer = clarification_content.group(1).strip()
+                    emit('thought', {'type': 'clarification', 'content': clarification_answer})
+                    return clarification_answer
             else:
-                emit('thought', {'type': 'decision', 'content': "Think/Plan/Decision/Action\n\n" + assistant_message['content']})
-                reflection_prompt = "Your last response didn't provide a final answer. Please reflect on your current understanding of the problem and consider if you need to use any tools or if you can now provide a final answer. If you're ready to give a final answer, put your response in tags <answer></answer>"
+                if assistant_message['content'].strip():
+                    emit('thought', {'type': 'think_more', 'content': "Think/Plan/Decision/Action\n\n" + assistant_message['content']})
+                    reflection_prompt = "Your last response didn't provide a final answer or was incorrectly formatted. Please reflect on your current understanding of the problem and consider if you need to use any tools or if you can now provide a final answer. If you're ready to give a final answer, or need more input from the user, put your response in tags <answer></answer>."
+                else:
+                    emit('thought', {'type': 'think_more', 'content': "Previous step failed. Retrying..."})
+                    reflection_prompt = "The previous step failed to produce any content. Please retry the previous step, considering alternative approaches or tools that might help solve the problem. If you're ready to give a final answer, or need more input from the user, put your response in tags <answer></answer>."
+                
                 conversation_history.append({"role": "assistant", "content": reflection_prompt})
                 emit('conversation_history', {'history': conversation_history})
 
@@ -133,6 +144,7 @@ When addressing a query, follow these steps:
 2. Plan: Develop a plan of action, considering whether you need to use any tools or if you can answer directly.
 
 3. Execute: If you need to use a tool, call it as you would a function. If not, proceed with your reasoning.
+ - Analyse the given prompt and decided whether or not it can be answered by a tool.  If it can, use the following functions to respond with a JSON for a function call with its proper arguments that best answers the given prompt.  Respond in the format \"name\": function name, \"parameters\": dictionary of argument name and its value. Do not use variables.
 
 4. Reflect: After each step or tool use, reflect on the results:
    - If successful, consider if the result fully answers the user's query or if additional steps are needed.
@@ -147,12 +159,13 @@ When addressing a query, follow these steps:
 
 6. Conclude: When you believe you have a comprehensive answer to the user's query, provide your final answer.
 
-Always explain your thought process, including your reasoning for each decision and how you arrived at your conclusions. If you're providing a final answer, put your response in tags <answer></answer>.
+Always explain your thought process, including your reasoning for each decision and how you arrived at your conclusions. If you're providing a final answer, or need more input from the user, put your response in tags <answer></answer>.
 
 Remember, complex problems often require multiple steps and iterations. Don't hesitate to break down the problem, use tools multiple times, or explore different approaches to arrive at the best solution.
+Before approaching a problem, come up with a few ways you might solve it, and then choose the most promising approach. Repeat this on each iteration.
 """
 
-PRIMARY_MODEL = "llama3.1:8b"
+PRIMARY_MODEL = "qwen2.5:14b"
 
 UPDATE_INTERVAL = 0.1  # 100ms, configurable
 

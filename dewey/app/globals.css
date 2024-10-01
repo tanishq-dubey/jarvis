@@ -3,25 +3,62 @@
 @tailwind utilities;
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --foreground-rgb: 255, 255, 255;
+  --background-start-rgb: 0, 0, 0;
+  --background-end-rgb: 0, 0, 0;
 }
 
 body {
-  color: var(--foreground);
-  background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+  color: rgb(var(--foreground-rgb));
+  background: linear-gradient(
+      to bottom,
+      transparent,
+      rgb(var(--background-end-rgb))
+    )
+    rgb(var(--background-start-rgb));
+  font-family: 'Noto Sans Mono', monospace;
 }
 
-@layer utilities {
-  .text-balance {
-    text-wrap: balance;
-  }
+/* Custom styles from the original index.html */
+.thinking-section {
+  margin-bottom: 20px;
+  border-left: 2px solid #444;
+  padding-left: 10px;
 }
+
+.thought-summary {
+  font-weight: bold;
+  margin-bottom: 5px;
+  padding: 5px;
+  border-radius: 3px;
+}
+
+.thought-summary.plan { background-color: #2c3e50; }
+.thought-summary.decision { background-color: #34495e; }
+.thought-summary.tool_call { background-color: #16a085; }
+.thought-summary.tool_result { background-color: #27ae60; }
+.thought-summary.think_more { background-color: #2980b9; }
+.thought-summary.answer { background-color: #8e44ad; }
+
+.thought-details {
+  display: none;
+  margin-left: 20px;
+  border-left: 2px solid #444;
+  padding-left: 10px;
+  margin-bottom: 10px;
+  white-space: pre-wrap;
+  font-family: 'Noto Sans Mono', monospace;
+  background-color: #222;
+}
+
+.collapsible::before {
+  content: '▶ ';
+  display: inline-block;
+  transition: transform 0.3s;
+}
+
+.collapsible.open::before {
+  transform: rotate(90deg);
+}
+
+/* Add any other custom styles from the original index.html here */
