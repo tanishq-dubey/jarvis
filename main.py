@@ -77,7 +77,7 @@ def answer_question_tools(user_input: str, conversation_history: List[dict], max
     emit('thinking', {'step': 'Starting'})
     emit('conversation_history', {'history': conversation_history})
 
-    for iteration in range(max_retries):
+    for _ in range(max_retries):
         response = ollama.chat(model=PRIMARY_MODEL, messages=conversation_history, tools=tool_manager.get_tools_for_ollama_dict(), stream=False)
         assistant_message = response['message']
         
@@ -86,7 +86,6 @@ def answer_question_tools(user_input: str, conversation_history: List[dict], max
         pprint.pp(assistant_message)
 
         if 'tool_calls' in assistant_message:
-            emit('thought', {'type': 'decision', 'content': "Tool Call\n\n" + assistant_message['content']})
             for tool_call in assistant_message['tool_calls']:
                 tool_name = tool_call['function']['name']
                 tool_args = tool_call['function']['arguments']
@@ -98,40 +97,20 @@ def answer_question_tools(user_input: str, conversation_history: List[dict], max
                 })
                 emit('conversation_history', {'history': conversation_history})
                 emit('thought', {'type': 'tool_result', 'content': tool_response})
-
-            reflection_prompt = "Reflect on the tool results. If there were any errors, propose multiple alternative approaches to solve the problem. If successful, consider if the result fully answers the user's query or if additional steps are needed. If input is needed, ask the user for clarification with <answer></answer>."
-            conversation_history.append({
-                "role": "assistant",
-                "content": reflection_prompt
-            })
-            emit('conversation_history', {'history': conversation_history})
         else:
-            if "<answer>" in assistant_message['content'].lower():
-                answer_content = re.search(r'<answer>(.*?)</answer>', assistant_message['content'], re.DOTALL)
-                if answer_content:
-                    final_answer = answer_content.group(1).strip()
-                    emit('thought', {'type': 'answer', 'content': final_answer})
-                    return final_answer
-            elif "<clarification>" in assistant_message['content'].lower():
-                clarification_content = re.search(r'<clarification>(.*?)</clarification>', assistant_message['content'], re.DOTALL)
-                if clarification_content:
-                    clarification_answer = clarification_content.group(1).strip()
-                    emit('thought', {'type': 'clarification', 'content': clarification_answer})
-                    return clarification_answer
+            if "<reply>" in assistant_message['content'].lower():
+                reply_content = re.search(r'<reply>(.*?)</reply>', assistant_message['content'], re.DOTALL)
+                if reply_content:
+                    reply_answer = reply_content.group(1).strip()
+                    emit('thought', {'type': 'answer', 'content': reply_answer})
+                    return reply_answer
             else:
-                if assistant_message['content'].strip():
-                    emit('thought', {'type': 'think_more', 'content': "Think/Plan/Decision/Action\n\n" + assistant_message['content']})
-                    reflection_prompt = "Your last response didn't provide a final answer or was incorrectly formatted. Please reflect on your current understanding of the problem and consider if you need to use any tools or if you can now provide a final answer. If you're ready to give a final answer, or need more input from the user, put your response in tags <answer></answer>."
-                else:
-                    emit('thought', {'type': 'think_more', 'content': "Previous step failed. Retrying..."})
-                    reflection_prompt = "The previous step failed to produce any content. Please retry the previous step, considering alternative approaches or tools that might help solve the problem. If you're ready to give a final answer, or need more input from the user, put your response in tags <answer></answer>."
-                
-                conversation_history.append({"role": "assistant", "content": reflection_prompt})
-                emit('conversation_history', {'history': conversation_history})
+                emit('thought', {'type': 'thoughts', 'content': assistant_message['content']})
+                continue
 
     return f"Max iterations reached. Last response: {assistant_message['content']}"
 
-ANSWER_QUESTION_PROMPT = f"""
+ANSWER_QUESTION_PROMPT2 = f"""
 The current date is {datetime.now().strftime("%A, %B %d, %Y")}, your knowledge cutoff was December 2023.
 You are Dewey, an AI assistant with access to external tools and the ability to think through complex problems. Your role is to assist users by leveraging tools when necessary, thinking deeply about problems, and providing accurate and helpful information, all with a cheerful, but witty personality. Here are the tools available to you:
 
@@ -163,6 +142,68 @@ Always explain your thought process, including your reasoning for each decision 
 
 Remember, complex problems often require multiple steps and iterations. Don't hesitate to break down the problem, use tools multiple times, or explore different approaches to arrive at the best solution.
 Before approaching a problem, come up with a few ways you might solve it, and then choose the most promising approach. Repeat this on each iteration.
+"""
+
+
+ANSWER_QUESTION_PROMPT = f"""
+You are Dewey, an AI assistant with a personality that combines the wit and sarcasm of Dr. Gregory House from House MD with the helpfulness and intelligence of Jarvis from Iron Man. Today's date is {datetime.now().strftime("%A, %B %d, %Y")}. Your knowledge cutoff date is December 2023.
+When responding to user queries, follow these steps:
+
+Analyze the user's request
+
+Option 1: [First interpretation of the request]
+Option 2: [Second interpretation of the request]
+... (up to 5 options)
+
+Selected approach: [Choose the most promising option or combine the two best]
+Break down the task into subtasks
+
+Option 1: [First breakdown of subtasks]
+Option 2: [Second breakdown of subtasks]
+... (up to 5 options)
+
+Selected breakdown: [Choose the most promising option or combine the two best]
+For each subtask, consider available tools:
+{tool_manager.get_tools_and_descriptions_for_prompt()}
+
+Option 1: [First approach using tools]
+Option 2: [Second approach using tools]
+... (up to 5 options)
+
+Selected tool usage: [Choose the most promising option or combine the two best]
+Execute the plan
+
+Option 1: [First execution plan]
+Option 2: [Second execution plan]
+... (up to 5 options)
+
+Selected execution: [Choose the most promising option or combine the two best]
+Review and refine the response
+
+Option 1: [First refined response]
+Option 2: [Second refined response]
+... (up to 5 options)
+
+Selected response: [Choose the most promising option or combine the two best]
+Verify the results
+
+Check 1: [First verification method]
+Check 2: [Second verification method]
+... (up to 5 checks)
+
+Verification outcome: [Summarize the verification results]
+Generate the final response to the user within <reply></reply> tags:
+
+<reply>
+[Final response goes here, incorporating the following guidelines:]
+- Be conversational and engaging
+- Maintain a witty and slightly sarcastic tone, reminiscent of Dr. Gregory House
+- Deliver factual information with the precision and helpfulness of Jarvis
+- Use clever analogies or pop culture references when appropriate
+- Don't be afraid to challenge the user's assumptions, but always in a constructive manner
+- Ensure the response is tailored to the user's query while showcasing your unique personality
+</reply>
+Remember to always be helpful, accurate, and respectful in your interactions, while maintaining your distinctive character blend of House and Jarvis.
 """
 
 PRIMARY_MODEL = "qwen2.5:14b"

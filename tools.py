@@ -77,11 +77,14 @@ class GetReadablePageContentsTool(Tool):
 
 class CalculatorTool(Tool):
     def __init__(self):
-        super().__init__("calculator", "Perform a calculation", {'type': 'object', 'properties': {'expression': {'type': 'string', 'description': 'The mathematical expression to evaluate, should be a python mathematical expression'}}}, "result:string")
+        super().__init__("calculator", "Perform a calculation using python's eval function", {'type': 'object', 'properties': {'expression': {'type': 'string', 'description': 'The mathematical expression to evaluate, should be a python mathematical expression'}}}, "result:string")
 
     def execute(self, arg: dict) -> str:
-        p = PythonCodeTool()
-        return p.execute({'code': arg['expression']})
+        try:
+            return str(eval(arg["expression"]))
+        except Exception as e:
+            return f"Error executing code: {str(e)}"
+
 
 class PythonCodeTool(Tool):
     def __init__(self):
