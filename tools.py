@@ -120,4 +120,4 @@ class PythonCodeTool(Tool):
         except Exception as e:
             return f"Error executing code: {str(e)}"
         
-        return '\n'.join([f"{k}: {v}" for k, v in result.items()])
+        return '\n'.join([f"{k}:\n{v}" for k, v in result.items()])

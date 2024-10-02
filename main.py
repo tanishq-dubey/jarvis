@@ -77,6 +77,8 @@ def answer_question_tools(user_input: str, conversation_history: List[dict], max
     emit('thinking', {'step': 'Starting'})
     emit('conversation_history', {'history': conversation_history})
 
+    last_thought_content = None
+
     for _ in range(max_retries):
         response = ollama.chat(model=PRIMARY_MODEL, messages=conversation_history, tools=tool_manager.get_tools_for_ollama_dict(), stream=False)
         assistant_message = response['message']
@@ -105,7 +107,15 @@ def answer_question_tools(user_input: str, conversation_history: List[dict], max
                     emit('thought', {'type': 'answer', 'content': reply_answer})
                     return reply_answer
             else:
-                emit('thought', {'type': 'thoughts', 'content': assistant_message['content']})
+                current_thought_content = assistant_message['content'].strip()
+                emit('thought', {'type': 'thoughts', 'content': current_thought_content})
+                
+                # Check for two consecutive thoughts, with the second being empty
+                if last_thought_content and not current_thought_content:
+                    emit('thought', {'type': 'answer', 'content': last_thought_content})
+                    return last_thought_content
+                
+                last_thought_content = current_thought_content
                 continue
 
     return f"Max iterations reached. Last response: {assistant_message['content']}"
