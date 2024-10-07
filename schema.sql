@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS Queries (
     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
     query TEXT NOT NULL,
     api_key_id INTEGER,
+    status TEXT NOT NULL,
     conversation_history TEXT,
     FOREIGN KEY (api_key_id) REFERENCES Keys (id)
 );
