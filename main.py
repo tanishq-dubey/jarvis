@@ -481,7 +481,7 @@ def api_query(body: QueryRequest):
 
 
 @app.get(
-    "/api/v1/query_status/<query_id>",
+    "/api/v1/query_status/<string:query_id>",
     responses={
         "200": QueryStatusResponse,
         "404": {"description": "Query not found"},
@@ -498,6 +498,14 @@ def get_query_status(query_id: str):
     curl -X GET http://localhost:5001/api/v1/query_status/query-id-here \
          -H "X-API-Key: your-api-key"
     """
+    api_key = request.headers.get('X-API-Key')
+    if not api_key:
+        return jsonify({"error": "API key is required"}), 401
+
+    api_key_id = validate_api_key(api_key)
+    if not api_key_id:
+        return jsonify({"error": "Invalid API key"}), 401
+
     try:
         db = get_db()
         cursor = db.cursor()
