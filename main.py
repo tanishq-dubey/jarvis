@@ -93,15 +93,22 @@ def init_db():
         db = get_db()
         db.execute(
             """
-            CREATE TABLE IF NOT EXISTS Queries (
-                id TEXT PRIMARY KEY,
+            CREATE TABLE IF NOT EXISTS Keys (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT NOT NULL UNIQUE,
+                api_key TEXT NOT NULL UNIQUE
+            );
+
+CREATE TABLE IF NOT EXISTS Queries (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                request_id TEXT NOT NULL UNIQUE,
                 ip TEXT NOT NULL,
                 timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
                 query TEXT NOT NULL,
                 api_key_id INTEGER,
                 conversation_history TEXT,
                 FOREIGN KEY (api_key_id) REFERENCES Keys (id)
-            )
+            );
         """
         )
         db.commit()
