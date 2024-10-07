@@ -22,6 +22,8 @@ import logging
 from flask import Flask, g, jsonify, request, send_from_directory
 from flask_socketio import SocketIO, emit
 from pydantic import BaseModel
+from werkzeug.utils import secure_filename
+import base64
 
 from models import model_manager
 from tools import DefaultToolManager
@@ -37,6 +39,9 @@ CONFIG_FILE = "config.ini"
 # Add this near the top of the file, after imports
 processing_thread = None
 processing_thread_started = False
+
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
+MAX_IMAGE_SIZE = 1 * 1024 * 1024  # 1MB
 
 
 def create_default_config():
@@ -564,6 +569,7 @@ def answer_question_tools_api(
             tools=tool_manager.get_tools_for_ollama_dict(),
             stream=False,
         )
+        logger.info(f"API       Response: {response}")
         assistant_message = response["message"]
 
         conversation_history.append(assistant_message)
@@ -574,6 +580,7 @@ def answer_question_tools_api(
                 tool_args = tool_call["function"]["arguments"]
                 tool_response = tool_manager.get_tool(tool_name).execute(tool_args)
                 conversation_history.append({"role": "tool", "content": tool_response})
+                logger.info(f"API       Tool response: {tool_response}")
         else:
             if "<reply>" in assistant_message["content"].lower():
                 reply_content = re.search(
@@ -645,7 +652,15 @@ def process_queries():
                     db.commit()
                     logger.info(f"Updated query {query_id} status to PROCESSING")
 
-                    conversation_history = [{"role": "system", "content": ANSWER_QUESTION_PROMPT}]
+                    # Fetch conversation history if it exists
+                    cursor.execute("SELECT conversation_history FROM Queries WHERE id = ?", (query_id,))
+                    conversation_history_result = cursor.fetchone()
+                    
+                    if conversation_history_result and conversation_history_result[0]:
+                        conversation_history = json.loads(conversation_history_result[0])
+                    else:
+                        conversation_history = [{"role": "system", "content": ANSWER_QUESTION_PROMPT}]
+                    
                     logger.info(f"Starting answer_question_tools_api for query {query_id}")
                     final_conversation_history = answer_question_tools_api(user_input, conversation_history)
                     logger.info(f"Finished answer_question_tools_api for query {query_id}")
@@ -660,7 +675,7 @@ def process_queries():
                     logger.info(f"Updated query {query_id} status to DONE")
                 else:
                     logger.info("No queued queries found. Waiting...")
-                    time.sleep(random.uniform(5, 10))  # Wait for 5 seconds before checking again if no queries are found
+                    time.sleep(5)  # Wait for 5 seconds before checking again if no queries are found
             except Exception as e:
                 logger.exception(f"Error processing query: {str(e)}")
                 time.sleep(1)  # Wait for 1 second before retrying in case of an error
@@ -724,6 +739,80 @@ def start_processing_thread():
         processing_thread.start()
         processing_thread_started = True
         logger.info("Query processing thread started")
+
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+@app.post("/api/v1/query_with_image")
+def api_query_with_image():
+    """
+    Submit a new query to the LLM Chat Server with an optional image.
+
+    This endpoint requires authentication via an API key.
+
+    Sample cURL:
+    curl -X POST http://localhost:5001/api/v1/query_with_image \
+         -H "X-API-Key: your-api-key" \
+         -F "message=What's in this image?" \
+         -F "image=@path/to/your/image.jpg"
+    """
+    if not ENABLE_API_ENDPOINTS:
+        return jsonify({"error": "API endpoints are disabled"}), 404
+
+    api_key = request.headers.get('X-API-Key')
+    if not api_key:
+        return jsonify({"error": "API key is required"}), 401
+
+    api_key_id = validate_api_key(api_key)
+    if not api_key_id:
+        return jsonify({"error": "Invalid API key"}), 401
+
+    if 'message' not in request.form:
+        return jsonify({"error": "Message is required"}), 400
+
+    user_input = request.form['message']
+    query_id = str(uuid.uuid4())
+
+    image_base64 = None
+    if 'image' in request.files:
+        file = request.files['image']
+        if file and allowed_file(file.filename):
+            if file.content_length > MAX_IMAGE_SIZE:
+                return jsonify({"error": "Image size exceeds 1MB limit"}), 400
+            
+            # Read and encode the image
+            image_data = file.read()
+            image_base64 = base64.b64encode(image_data).decode('utf-8')
+
+    try:
+        db = get_db()
+        cursor = db.cursor()
+        cursor.execute(
+            "INSERT INTO Queries (id, ip, query, api_key_id, status) VALUES (?, ?, ?, ?, ?)",
+            (query_id, request.remote_addr, user_input, api_key_id, QueryStatus.QUEUED.value)
+        )
+        db.commit()
+        logger.info(f"Added new query with image to database: {query_id}")
+
+        # If there's an image, add it to the conversation history
+        if image_base64:
+            conversation_history = [
+                {"role": "system", "content": ANSWER_QUESTION_PROMPT},
+                {"role": "user", "content": f"[An image was uploaded with this message] {user_input}"},
+                {"role": "system", "content": f"An image was uploaded. You can analyze it using the analyze_image tool with the following base64 string: {image_base64}"}
+            ]
+            cursor.execute(
+                "UPDATE Queries SET conversation_history = ? WHERE id = ?",
+                (json.dumps(conversation_history), query_id)
+            )
+            db.commit()
+
+        return jsonify({"query_id": query_id})
+    except Exception as e:
+        logger.exception(f"Error during API query processing with image: {str(e)}")
+        return jsonify({"error": str(e)}), 500
 
 
 # Replace the if __main__ block with this:
