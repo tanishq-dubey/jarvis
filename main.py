@@ -98,20 +98,17 @@ def init_db():
                 api_key TEXT NOT NULL UNIQUE
             );
         """)
-        db.execute(
-            """
+        db.execute('''
             CREATE TABLE IF NOT EXISTS Queries (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                request_id TEXT NOT NULL UNIQUE,
+                id TEXT PRIMARY KEY,
                 ip TEXT NOT NULL,
                 timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
                 query TEXT NOT NULL,
                 api_key_id INTEGER,
                 conversation_history TEXT,
                 FOREIGN KEY (api_key_id) REFERENCES Keys (id)
-            );
-        """
-        )
+            )
+        ''')
         db.commit()
 
 
@@ -124,8 +121,7 @@ CREATE TABLE IF NOT EXISTS Keys (
 );
 
 CREATE TABLE IF NOT EXISTS Queries (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    request_id TEXT NOT NULL UNIQUE,
+    id TEXT PRIMARY KEY,
     ip TEXT NOT NULL,
     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
     query TEXT NOT NULL,
@@ -458,7 +454,7 @@ def api_query(body: QueryRequest):
     if not ENABLE_API_ENDPOINTS:
         return jsonify({"error": "API endpoints are disabled"}), 404
 
-    api_key = request.headers.get("X-API-Key")
+    api_key = request.headers.get('X-API-Key')
     if not api_key:
         return jsonify({"error": "API key is required"}), 401
 
@@ -474,7 +470,7 @@ def api_query(body: QueryRequest):
         cursor = db.cursor()
         cursor.execute(
             "INSERT INTO Queries (id, ip, query, api_key_id) VALUES (?, ?, ?, ?)",
-            (query_id, request.remote_addr, user_input, api_key_id),
+            (query_id, request.remote_addr, user_input, api_key_id)
         )
         db.commit()
 
@@ -505,9 +501,7 @@ def get_query_status(query_id: str):
     try:
         db = get_db()
         cursor = db.cursor()
-        cursor.execute(
-            "SELECT conversation_history FROM Queries WHERE id = ?", (query_id,)
-        )
+        cursor.execute("SELECT conversation_history FROM Queries WHERE id = ?", (query_id,))
         result = cursor.fetchone()
 
         if result is None:
@@ -610,22 +604,16 @@ def process_queries():
 
                 if result:
                     query_id, user_input = result
-                    conversation_history = [
-                        {"role": "system", "content": ANSWER_QUESTION_PROMPT}
-                    ]
-                    final_conversation_history = answer_question_tools_api(
-                        user_input, conversation_history
-                    )
+                    conversation_history = [{"role": "system", "content": ANSWER_QUESTION_PROMPT}]
+                    final_conversation_history = answer_question_tools_api(user_input, conversation_history)
 
                     cursor.execute(
                         "UPDATE Queries SET conversation_history = ? WHERE id = ?",
-                        (json.dumps(final_conversation_history), query_id),
+                        (json.dumps(final_conversation_history), query_id)
                     )
                     db.commit()
                 else:
-                    time.sleep(
-                        1
-                    )  # Wait for 1 second before checking again if no queries are found
+                    time.sleep(1)  # Wait for 1 second before checking again if no queries are found
             except Exception as e:
                 logger.exception("Error processing query", error=str(e))
                 time.sleep(1)  # Wait for 1 second before retrying in case of an error
