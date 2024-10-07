@@ -578,9 +578,12 @@ def answer_question_tools_api(
             for tool_call in assistant_message["tool_calls"]:
                 tool_name = tool_call["function"]["name"]
                 tool_args = tool_call["function"]["arguments"]
-                tool_response = tool_manager.get_tool(tool_name).execute(tool_args)
-                conversation_history.append({"role": "tool", "content": tool_response})
-                logger.info(f"API       Tool response: {tool_response}")
+                if tool_name is not None and tool_args is not None:
+                    tool_response = tool_manager.get_tool(tool_name).execute(tool_args)
+                    conversation_history.append({"role": "tool", "content": tool_response})
+                    logger.info(f"API Tool response: {tool_response}")
+                else:
+                    logger.warning(f"Skipping tool call due to missing tool name or arguments: {tool_call}")
         else:
             if "<reply>" in assistant_message["content"].lower():
                 reply_content = re.search(
