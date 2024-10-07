@@ -91,15 +91,16 @@ def close_connection(exception):
 def init_db():
     with app.app_context():
         db = get_db()
-        db.execute(
-            """
+        db.execute("""
             CREATE TABLE IF NOT EXISTS Keys (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 username TEXT NOT NULL UNIQUE,
                 api_key TEXT NOT NULL UNIQUE
             );
-
-CREATE TABLE IF NOT EXISTS Queries (
+        """)
+        db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS Queries (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 request_id TEXT NOT NULL UNIQUE,
                 ip TEXT NOT NULL,
