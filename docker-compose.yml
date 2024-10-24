@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  llm-chat-server:
+    build: .
+    ports:
+      - "5001:5001"
+    volumes:
+      - ./llm_chat_server.db:/app/llm_chat_server.db
+      - ./config.ini:/app/config.ini
+    environment:
+      - FLASK_ENV=production
+    restart: unless-stopped
+
+volumes:
+  llm_chat_server_db:
